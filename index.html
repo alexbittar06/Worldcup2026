@@ -22,6 +22,15 @@
   </header>
 
   <main>
+    <section class="mode-switcher-card">
+      <h2>Choose your setup</h2>
+      <p class="hint">Do you want to rank teams by hand, or calculate standings from real match scores?</p>
+      <div class="mode-switcher">
+        <button id="mode-rank" class="mode-btn active" type="button">Pick 1–4</button>
+        <button id="mode-scores" class="mode-btn" type="button">Use Match Scores</button>
+      </div>
+    </section>
+
     <section id="groups-section">
       <h2>Group Stage</h2>
       <div id="groups-container"></div>
@@ -31,6 +40,16 @@
         <button id="reset-all" class="secondary">Reset</button>
       </div>
       <p class="hint">Each group needs one team in positions 1-4. The bracket will populate automatically from the selected group winners and runners-up.</p>
+    </section>
+
+    <section id="match-results-section">
+      <h2>Match Results Mode</h2>
+      <p class="hint">Use this as a second option: enter the goals for each group match, then calculate final standings by points, goal difference, and goals scored.</p>
+      <div class="actions">
+        <button id="randomize-match-results" class="secondary">Randomize Match Results</button>
+        <button id="apply-match-results">Calculate Standings From Results</button>
+      </div>
+      <div id="match-results-container" class="match-results-grid"></div>
     </section>
 
     <section id="third-place-section">

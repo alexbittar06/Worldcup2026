@@ -93,15 +93,22 @@ const bracketTemplate = [
 
 const groupsContainer = document.getElementById("groups-container");
 const thirdPlaceContainer = document.getElementById("third-place-container");
+const matchResultsContainer = document.getElementById("match-results-container");
 const bracketSection = document.getElementById("bracket-section");
 const bracketContainer = document.getElementById("bracket-container");
 const simulateButton = document.getElementById("simulate-bracket");
 const randomizeButton = document.getElementById("randomize-standings");
+const randomizeMatchResultsButton = document.getElementById("randomize-match-results");
+const applyMatchResultsButton = document.getElementById("apply-match-results");
 const resetButton = document.getElementById("reset-all");
+const modeRankButton = document.getElementById("mode-rank");
+const modeScoresButton = document.getElementById("mode-scores");
 const winnerDisplay = document.getElementById("winner-display");
 
 const selections = {};
 const thirdPlaceSelections = {};
+const matchResults = {};
+const standingsCache = {};
 const matchWinners = {};
 
 function getTeamPalette(team) {
@@ -244,6 +251,179 @@ function randomizeStandings() {
   buildThirdPlaceSelectors();
 }
 
+function getFixtureKey(groupName, homeTeam, awayTeam) {
+  return `${groupName}:${homeTeam}v${awayTeam}`;
+}
+
+function renderMatchResults() {
+  matchResultsContainer.innerHTML = "";
+
+  Object.entries(groups).forEach(([groupName, teams]) => {
+    const groupCard = document.createElement("article");
+    groupCard.className = "match-result-card";
+
+    const heading = document.createElement("h3");
+    heading.textContent = `Group ${groupName}`;
+    groupCard.appendChild(heading);
+
+    const hint = document.createElement("p");
+    hint.textContent = "Enter goals for each match and calculate the standings from the real scores.";
+    groupCard.appendChild(hint);
+
+    for (let i = 0; i < teams.length; i += 1) {
+      for (let j = i + 1; j < teams.length; j += 1) {
+        const homeTeam = teams[i];
+        const awayTeam = teams[j];
+        const key = getFixtureKey(groupName, homeTeam, awayTeam);
+        const row = document.createElement("div");
+        row.className = "match-result-row";
+
+        const homeLabel = document.createElement("label");
+        homeLabel.textContent = `${flags[homeTeam] || "🏁"} ${homeTeam}`;
+        const homeInput = document.createElement("input");
+        homeInput.type = "number";
+        homeInput.min = "0";
+        homeInput.step = "1";
+        homeInput.value = matchResults[key]?.homeGoals ?? 0;
+        homeInput.addEventListener("input", () => {
+          if (!matchResults[key]) {
+            matchResults[key] = {};
+          }
+          matchResults[key].homeGoals = Number(homeInput.value) || 0;
+        });
+        homeLabel.appendChild(homeInput);
+
+        const vs = document.createElement("span");
+        vs.className = "match-result-vs";
+        vs.textContent = "vs";
+
+        const awayLabel = document.createElement("label");
+        awayLabel.textContent = `${flags[awayTeam] || "🏁"} ${awayTeam}`;
+        const awayInput = document.createElement("input");
+        awayInput.type = "number";
+        awayInput.min = "0";
+        awayInput.step = "1";
+        awayInput.value = matchResults[key]?.awayGoals ?? 0;
+        awayInput.addEventListener("input", () => {
+          if (!matchResults[key]) {
+            matchResults[key] = {};
+          }
+          matchResults[key].awayGoals = Number(awayInput.value) || 0;
+        });
+        awayLabel.appendChild(awayInput);
+
+        row.appendChild(homeLabel);
+        row.appendChild(vs);
+        row.appendChild(awayLabel);
+        groupCard.appendChild(row);
+      }
+    }
+
+    matchResultsContainer.appendChild(groupCard);
+  });
+}
+
+function randomizeMatchResults() {
+  Object.keys(matchResults).forEach(key => delete matchResults[key]);
+  Object.keys(standingsCache).forEach(key => delete standingsCache[key]);
+
+  Object.entries(groups).forEach(([groupName, teams]) => {
+    for (let i = 0; i < teams.length; i += 1) {
+      for (let j = i + 1; j < teams.length; j += 1) {
+        const homeGoals = Math.floor(Math.random() * 4);
+        const awayGoals = Math.floor(Math.random() * 4);
+        matchResults[getFixtureKey(groupName, teams[i], teams[j])] = { homeGoals, awayGoals };
+      }
+    }
+  });
+
+  renderMatchResults();
+}
+
+function getGroupStandings(groupName) {
+  const teams = groups[groupName];
+  const table = teams.map(team => ({
+    team,
+    points: 0,
+    goalsFor: 0,
+    goalsAgainst: 0
+  }));
+
+  for (let i = 0; i < teams.length; i += 1) {
+    for (let j = i + 1; j < teams.length; j += 1) {
+      const homeTeam = teams[i];
+      const awayTeam = teams[j];
+      const key = getFixtureKey(groupName, homeTeam, awayTeam);
+      const fixture = matchResults[key] || { homeGoals: 0, awayGoals: 0 };
+      const homeGoals = Number(fixture.homeGoals) || 0;
+      const awayGoals = Number(fixture.awayGoals) || 0;
+
+      const homeRow = table.find(item => item.team === homeTeam);
+      const awayRow = table.find(item => item.team === awayTeam);
+
+      homeRow.goalsFor += homeGoals;
+      homeRow.goalsAgainst += awayGoals;
+      awayRow.goalsFor += awayGoals;
+      awayRow.goalsAgainst += homeGoals;
+
+      if (homeGoals > awayGoals) {
+        homeRow.points += 3;
+      } else if (awayGoals > homeGoals) {
+        awayRow.points += 3;
+      } else {
+        homeRow.points += 1;
+        awayRow.points += 1;
+      }
+    }
+  }
+
+  table.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    const aDiff = a.goalsFor - a.goalsAgainst;
+    const bDiff = b.goalsFor - b.goalsAgainst;
+    if (bDiff !== aDiff) return bDiff - aDiff;
+    if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor;
+    return a.team.localeCompare(b.team);
+  });
+
+  return table;
+}
+
+function calculateStandingsFromResults() {
+  Object.keys(selections).forEach(key => delete selections[key]);
+  Object.keys(standingsCache).forEach(key => delete standingsCache[key]);
+
+  Object.entries(groups).forEach(([groupName]) => {
+    const table = getGroupStandings(groupName);
+    standingsCache[groupName] = table;
+
+    selections[groupName] = {};
+    table.forEach((entry, index) => {
+      selections[groupName][entry.team] = String(index + 1);
+    });
+  });
+
+  updateTeamRankUI();
+  buildThirdPlaceSelectors();
+}
+
+function getAutoThirdPlaceTeams() {
+  const candidates = Object.entries(standingsCache).flatMap(([groupName, table]) => {
+    const thirdPlace = table.find(entry => entry.team === table[2].team);
+    return thirdPlace ? [{ group: groupName, team: thirdPlace.team, points: thirdPlace.points, goalDiff: thirdPlace.goalsFor - thirdPlace.goalsAgainst, goalsFor: thirdPlace.goalsFor }] : [];
+  });
+
+  return candidates
+    .sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff;
+      if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor;
+      return a.team.localeCompare(b.team);
+    })
+    .slice(0, 8)
+    .map(item => item.team);
+}
+
 function getThirdPlaceCandidates() {
   return Object.entries(groups).flatMap(([groupName, teams]) =>
     teams
@@ -319,6 +499,7 @@ function getThirdPlaceSummary() {
 function buildBracket() {
   const orderedGroups = {};
   let ready = true;
+  const scoreMode = document.getElementById("match-results-section").classList.contains("hidden") === false;
 
   Object.keys(groups).forEach(group => {
     const places = Array(4).fill(null);
@@ -346,12 +527,16 @@ function buildBracket() {
     return;
   }
 
-  const thirdPlaceTeams = Object.entries(thirdPlaceSelections)
-    .sort((a, b) => Number(a[1]) - Number(b[1]))
-    .map(([team]) => team);
+  const thirdPlaceTeams = scoreMode
+    ? getAutoThirdPlaceTeams()
+    : Object.entries(thirdPlaceSelections)
+        .sort((a, b) => Number(a[1]) - Number(b[1]))
+        .map(([team]) => team);
 
   if (thirdPlaceTeams.length < 8) {
-    alert("Please choose your top 8 third-place teams before simulating the knockout bracket.");
+    alert(scoreMode
+      ? "Please calculate standings from match results before simulating the knockout bracket."
+      : "Please choose your top 8 third-place teams before simulating the knockout bracket.");
     return;
   }
 
@@ -467,17 +652,38 @@ function updateKnockoutOptions() {
 function resetAll() {
   Object.keys(selections).forEach(key => delete selections[key]);
   Object.keys(thirdPlaceSelections).forEach(key => delete thirdPlaceSelections[key]);
+  Object.keys(matchResults).forEach(key => delete matchResults[key]);
   Object.keys(matchWinners).forEach(key => delete matchWinners[key]);
   buildGroupSelectors();
+  renderMatchResults();
   buildThirdPlaceSelectors();
   bracketSection.classList.add("hidden");
   bracketContainer.innerHTML = "";
   winnerDisplay.textContent = "";
 }
 
+function setMode(mode) {
+  const rankSection = document.getElementById("groups-section");
+  const scoresSection = document.getElementById("match-results-section");
+  const thirdPlaceSection = document.getElementById("third-place-section");
+
+  const isScoreMode = mode === "scores";
+  rankSection.classList.toggle("hidden", isScoreMode);
+  scoresSection.classList.toggle("hidden", !isScoreMode);
+  thirdPlaceSection.classList.toggle("hidden", isScoreMode);
+  modeRankButton.classList.toggle("active", !isScoreMode);
+  modeScoresButton.classList.toggle("active", isScoreMode);
+}
+
 simulateButton.addEventListener("click", buildBracket);
 randomizeButton.addEventListener("click", randomizeStandings);
+randomizeMatchResultsButton.addEventListener("click", randomizeMatchResults);
+applyMatchResultsButton.addEventListener("click", calculateStandingsFromResults);
 resetButton.addEventListener("click", resetAll);
+modeRankButton.addEventListener("click", () => setMode("rank"));
+modeScoresButton.addEventListener("click", () => setMode("scores"));
 
+setMode("rank");
 buildGroupSelectors();
+renderMatchResults();
 buildThirdPlaceSelectors();
